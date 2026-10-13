@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ucp.dev/schemas/shopping/verity.json",
+  "name": "dev.ucp.shopping.verity",
+  "title": "Verity Market Truth Extension (DRAFT)",
+  "description": "Extends Catalog Search, Catalog Lookup and Cart with provable market pricing: live market price next to the store price, freshness ages, short-term price pulse, price history and an append-only ledger reference. Never carries cost, markup or margin.",
+  "$defs": {
+    "freshness": {
+      "type": "object",
+      "required": ["market_observed_at", "checked_at"],
+      "properties": {
+        "market_observed_at": { "type": "string", "format": "date-time", "description": "When the most recent market observation backing market_price was recorded." },
+        "checked_at": { "type": "string", "format": "date-time", "description": "When the business last re-validated its own price against market." }
+      }
+    },
+    "pulse": {
+      "type": "object",
+      "description": "Market price change over a window, in basis points (1500 = +15.00%).",
+      "properties": {
+        "change_24h_bps": { "type": "integer" },
+        "change_7d_bps": { "type": "integer" }
+      }
+    },
+    "history_point": {
+      "type": "object",
+      "required": ["t", "amount"],
+      "properties": {
+        "t": { "type": "string", "format": "date-time" },
+        "amount": { "$ref": "../common/types/amount.json", "description": "Market price at t, ISO 4217 minor units." }
+      }
+    },
+    "signals": {
+      "type": "object",
+      "description": "The only value signals a storefront may show. Wholesale cost, markup and margin are out of scope by design.",
+      "properties": {
+        "market_demand": { "type": "string", "enum": ["cooling", "medium", "high", "very_high"] },
+        "scarcity": { "type": "string", "description": "Human-readable, e.g. '3 NM left'." },
+        "sales_volume_7d": { "type": "integer", "minimum": 0, "description": "Market-wide sold count, trailing 7 days." }
+      }
+    },
+    "verity_pricing": {
+      "type": "object",
+      "required": ["market_price", "freshness"],
+      "properties": {
+        "market_price": { "$ref": "../common/types/price.json" },
+        "condition": { "type": "string", "enum": ["NM", "LP", "MP", "HP", "DMG", "sealed"], "description": "Condition the market_price is quoted for." },
+        "freshness": { "$ref": "#/$defs/freshness" },
+        "pulse": { "$ref": "#/$defs/pulse" },
+        "history": { "type": "array", "items": { "$ref": "#/$defs/history_point" }, "description": "Down-sampled series for sparklines (e.g. 30 points / 30 days)." },
+        "signals": { "$ref": "#/$defs/signals" },
+        "ledger_ref": { "type": "string", "format": "uri", "description": "Link to the append-only ledger entry behind the current store price." },
+        "verdict": { "type": "string", "enum": ["below_market", "at_market", "above_market"], "description": "Store price relative to market_price." }
+      }
+    },
+    "dev.ucp.shopping.catalog.search": {
+      "title": "Catalog Search with Verity",
+      "allOf": [
+        { "$ref": "catalog_search.json#/$defs/search_response" },
+        { "type": "object", "properties": { "verity": { "type": "object", "description": "Map of variant id → verity_pricing.", "additionalProperties": { "$ref": "#/$defs/verity_pricing" }, "ucp_request": "omit" } } }
+      ]
+    },
+    "dev.ucp.shopping.catalog.lookup": {
+      "title": "Catalog Lookup with Verity",
+      "allOf": [
+        { "$ref": "catalog_lookup.json#/$defs/lookup_response" },
+        { "type": "object", "properties": { "verity": { "type": "object", "additionalProperties": { "$ref": "#/$defs/verity_pricing" }, "ucp_request": "omit" } } }
+      ]
+    },
+    "dev.ucp.shopping.cart": {
+      "title": "Cart with Verity",
+      "description": "Each line item carries a market check at add time so the agent can say 'you never overpaid'.",
+      "allOf": [
+        { "$ref": "cart.json" },
+        { "type": "object", "properties": { "verity": { "type": "object", "additionalProperties": { "$ref": "#/$defs/verity_pricing" }, "description": "Map of line item id → verity_pricing.", "ucp_request": "omit" } } }
+      ]
+    }
+  }
+}
